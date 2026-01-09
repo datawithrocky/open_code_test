@@ -2,74 +2,63 @@ from pyspark.sql import SparkSession
 from db_config import db_config
 from ingestion_rules import INGESTION_RULES
 
-# -------------------------
-# SPARK SESSION
-# -------------------------
 spark = SparkSession.builder \
-    .appName("IDENT-Mongo-Selective-Ingestion") \
+    .appName("IDENT-Generic-Ingestion") \
     .getOrCreate()
 
 # -------------------------
-# READ FROM MONGODB
+# GENERIC READ FUNCTION
 # -------------------------
-def read_mongodb(rule):
-    mongo_conf = db_config["mongodb"]
+def read_source(rule):
+    source_conf = db_config[rule["source"]]
 
-    mongo_uri = (
-        f"mongodb://{mongo_conf['username']}:{mongo_conf['password']}"
-        f"@{mongo_conf['host']}:{mongo_conf['port']}/"
-        f"{mongo_conf['database']}.{rule['collection']}"
+    # MongoDB
+    if source_conf["type"] == "mongodb":
+        uri = (
+            f"mongodb://{source_conf['username']}:{source_conf['password']}"
+            f"@{source_conf['host']}:{source_conf['port']}/"
+            f"{source_conf['database']}.{rule['object']}"
+        )
+        return spark.read.format("mongodb").option("uri", uri).load()
+
+    # JDBC Sources (MySQL, SQL Server, etc.)
+    jdbc_url = source_conf["url"].format(
+        host=source_conf["host"],
+        port=source_conf["port"],
+        database=source_conf["database"]
     )
 
-    df = spark.read \
-        .format("mongodb") \
-        .option("uri", mongo_uri) \
+    return spark.read \
+        .format("jdbc") \
+        .option("url", jdbc_url) \
+        .option("dbtable", rule["object"]) \
+        .option("user", source_conf["username"]) \
+        .option("password", source_conf["password"]) \
+        .option("driver", source_conf["driver"]) \
         .load()
-
-    return df
 
 # -------------------------
 # WRITE TO POSTGRES
 # -------------------------
-def write_postgres(df, target_table):
-    pg_conf = db_config["postgresql"]
+def write_to_postgres(df, target_table):
+    pg = db_config["postgresql"]
 
-    pg_url = (
-        f"jdbc:postgresql://{pg_conf['host']}:{pg_conf['port']}/"
-        f"{pg_conf['database']}"
-    )
+    url = f"jdbc:postgresql://{pg['host']}:{pg['port']}/{pg['database']}"
 
     df.write \
         .format("jdbc") \
-        .option("url", pg_url) \
-        .option("dbtable", f"{pg_conf['landschm']}.{target_table}") \
-        .option("user", pg_conf["username"]) \
-        .option("password", pg_conf["password"]) \
-        .option("driver", "org.postgresql.Driver") \
+        .option("url", url) \
+        .option("dbtable", f"{pg['schema']}.{target_table}") \
+        .option("user", pg["username"]) \
+        .option("password", pg["password"]) \
+        .option("driver", pg["driver"]) \
         .mode("append") \
         .save()
 
 # -------------------------
-# MAIN IDENT INGESTION FLOW
+# MAIN FLOW
 # -------------------------
-def run_ident_ingestion():
-    for rule in INGESTION_RULES:
-
-        # Step 1: Read MongoDB
-        df = read_mongodb(rule)
-
-        # Step 2: Select Required Columns
-        df = df.select(*rule["columns"])
-
-        # Step 3: Apply Filter Rule
-        if rule.get("filter_condition"):
-            df = df.filter(rule["filter_condition"])
-
-        # Step 4: Write to Postgres
-        write_postgres(df, rule["target_table"])
-
-# -------------------------
-# DRIVER
-# -------------------------
-if __name__ == "__main__":
-    run_ident_ingestion()
+for rule in INGESTION_RULES:
+    df = read_source(rule)
+    df = df.select(*rule["columns"])   # 🔥 SELECTIVE COLUMN TRANSFER
+    write_to_postgres(df, rule["target_table"])
