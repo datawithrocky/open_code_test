@@ -16,3 +16,19 @@ CREATE TABLE src_schema.src_test_ident (
 INSERT INTO src_schema.src_test_ident VALUES
 ('P1001', 'POL-001', '2023-01-01', 'C001', 1000.00),
 ('P1002', 'POL-002', '2023-02-15', 'C002', 2000.00);
+
+
+
+----TGT 
+CREATE SCHEMA IF NOT EXISTS rake_schem_test;
+
+CREATE TABLE IF NOT EXISTS rake_schem_test.table_rak (
+    PolicyId       VARCHAR(20),
+    PolicyNumber   VARCHAR(20),
+    IssueDate      DATE,
+    ClientId       VARCHAR(20)
+);
+
+
+INSERT INTO rake_schem_test.table_rak VALUES
+('P1001', 'OLD-POL-001', '2022-01-01', 'OLD_C001');
