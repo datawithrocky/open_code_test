@@ -1,61 +1,75 @@
-import pandas as pd
 import numpy as np
+import pandas as pd
 from sqlalchemy import create_engine
 
-
 def merge_dicts(dict_list):
-    merged = {}
+    merged_dict = {}
     for d in dict_list:
-        merged.update(d)
-    return merged
+        merged_dict.update(d)
+    return merged_dict
+
+def check_duplicate_columns(df):
+    duplicates = df.index[df.index.duplicated()].tolist()
+    return duplicates
 
 
-def ds(file_mapping_list, target_df, policy_dict, source_table):
-    """
-    Relational selective column extraction & merge
-    """
+def ds(file_mapping_list, source_df, target_policy, policy_dict, source_f):
 
-    # PostgreSQL connection
-    engine = create_engine(
-        "postgresql+psycopg2://admin:admin123@40.81.136.92/Data_Migration_Pipeline"
+    input_conn_string = 'postgresql+psycopg2://admin:admin123@40.81.136.92/Data_Migration_Pipeline'
+    input_db = create_engine(input_conn_string)
+    input_conn = input_db.connect()
+
+    table_name = source_f.replace(".xlsx", "")
+    source_df = pd.read_sql(table_name, input_conn)
+
+    source_subset_columns = list(
+        set([i["source_column"] for i in policy_dict[source_f]["mapping"]])
     )
 
-    # Read source table
-    source_df = pd.read_sql_table(source_table, engine)
+    source_key = list(set([i["source_key"] for i in policy_dict[source_f]["mapping"]]))
+    target_key = list(set([i["target_key"] for i in policy_dict[source_f]["mapping"]]))
 
-    # Required source columns
-    source_columns = list(
-        set(m["source_column"] for m in policy_dict[source_table]["mapping"])
-    )
+    source_df_sb = source_df[source_subset_columns]
 
-    source_key = policy_dict[source_table]["mapping"][0]["source_key"]
-    target_key = policy_dict[source_table]["mapping"][0]["target_key"]
+    rename_cols = [
+        {i['source_column']: i['target_column']}
+        for i in policy_dict[source_f]["mapping"]
+    ]
 
-    # Selective extraction
-    source_df = source_df[source_columns]
+    rename_cols_n = merge_dicts(rename_cols)
 
-    # Rename source → target
-    rename_cols = merge_dicts([
-        {m["source_column"]: m["target_column"]}
-        for m in policy_dict[source_table]["mapping"]
-    ])
+    # ❌ BUG HERE (index instead of columns)
+    source_df_sb = source_df_sb.rename(index=rename_cols_n)
 
-    source_df = source_df.rename(columns=rename_cols)
-
-    # Merge with target
-    merged_df = target_df.merge(
-        source_df,
-        left_on=target_key,
-        right_on=rename_cols[source_key],
+    target_policy = target_policy.merge(
+        source_df_sb,
+        on=target_key,
         how="outer",
-        suffixes=("", "_new")
+        suffixes=('', '_df2')
     )
 
-    # Column overwrite logic
-    for col in merged_df.columns:
-        if col.endswith("_new"):
-            base_col = col.replace("_new", "")
-            merged_df[base_col] = merged_df[col].combine_first(merged_df[base_col])
-            merged_df.drop(columns=[col], inplace=True)
+    for col in target_policy:
+        col_df2 = col + '_df2'
+        if col_df2 in target_policy.columns:
+            target_policy[col] = (
+                target_policy[col_df2]
+                .replace('', np.nan)
+                .combine_first(target_policy[col])
+            )
+            target_policy.drop(columns=[col_df2], inplace=True)
 
-    return merged_df
+    for col in target_policy.columns:
+        if "_df2" in col:
+            target_policy[col.split('_df2')[0]] = (
+                target_policy[col]
+                .replace('', np.nan)
+                .combine_first(target_policy[col.split('_df2')[0]])
+            )
+            target_policy.drop(columns=[col], axis="columns")
+
+    target_policy = target_policy.apply(
+        lambda x: x.replace(pd.NaT, np.nan)
+        if x.dtype == 'datetime64[ns]' else x
+    )
+
+    return target_policy
