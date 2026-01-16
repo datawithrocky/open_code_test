@@ -1,0 +1,34 @@
+{
+  "src_test_ident": {
+    "type": "policy",
+    "schema": "rake_schem_test",
+    "tablename": "table_rak",
+    "relational": "True",
+    "mapping": [
+      {
+        "source_column": "policy_id",
+        "target_column": "policy.PolicyId",
+        "source_key": "policy_id",
+        "target_key": "PolicyId"
+      },
+      {
+        "source_column": "policy_number",
+        "target_column": "policy.PolicyNumber",
+        "source_key": "policy_id",
+        "target_key": "PolicyId"
+      },
+      {
+        "source_column": "issue_date",
+        "target_column": "policy.IssueDate",
+        "source_key": "policy_id",
+        "target_key": "PolicyId"
+      },
+      {
+        "source_column": "client_id",
+        "target_column": "policy.ClientId",
+        "source_key": "policy_id",
+        "target_key": "PolicyId"
+      }
+    ]
+  }
+}
