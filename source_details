@@ -1,0 +1,18 @@
+--BEFORE RUN – WHAT MUST EXIST
+
+
+CREATE SCHEMA IF NOT EXISTS src_schema;
+
+CREATE TABLE src_schema.src_test_ident (
+    policy_id        VARCHAR(20),
+    policy_number    VARCHAR(20),
+    issue_date        DATE,
+    client_id        VARCHAR(20),
+    premium_amount   NUMERIC(10,2)   -- extra column (ignored)
+);
+
+
+--Insert DEMO SOURCE DATA
+INSERT INTO src_schema.src_test_ident VALUES
+('P1001', 'POL-001', '2023-01-01', 'C001', 1000.00),
+('P1002', 'POL-002', '2023-02-15', 'C002', 2000.00);
